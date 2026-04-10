@@ -221,7 +221,8 @@ def download_video(url, output_dir):
         '--sub-lang', 'en',
         '--sub-format', 'vtt',
         '--restrict-filenames',
-        '-o', str(video_dir / 'video.%(ext)s'),
+        '-P', str(video_dir),
+        '-o', 'video.%(ext)s',
         url
     ]
     try:
