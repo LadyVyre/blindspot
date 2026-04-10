@@ -25,6 +25,22 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 
 app = Flask(__name__)
+
+
+def srt_to_vtt(srt_path, vtt_path):
+    """Convert SRT subtitle file to VTT format."""
+    try:
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # SRT uses comma for milliseconds, VTT uses period
+        content = content.replace(',', '.')
+
+        with open(vtt_path, 'w', encoding='utf-8') as f:
+            f.write('WEBVTT\n\n')
+            f.write(content)
+    except Exception as e:
+        raise RuntimeError(f'SRT to VTT conversion failed: {e}')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5GB upload limit
 
 OUTPUT_DIR = Path('E:/Dante/Vyre Studio/blindspot/output')
@@ -54,6 +70,21 @@ def run_pipeline(input_path, keep_video=False):
     current_job['folder'] = None
 
     try:
+        # Check for staged subtitle — pass it to the pipeline
+        staged_sub = None
+        staging_dir = OUTPUT_DIR / '_staging'
+        if staging_dir.exists():
+            for ext in ('.vtt', '.srt', '.txt'):
+                sub_file = staging_dir / f'subtitle{ext}'
+                if sub_file.exists():
+                    staged_sub = str(sub_file)
+                    if ext != '.vtt':
+                        # Prefer VTT if available
+                        vtt = staging_dir / 'subtitle.vtt'
+                        if vtt.exists():
+                            staged_sub = str(vtt)
+                    break
+
         # Build command
         cmd = [
             sys.executable,
@@ -63,6 +94,8 @@ def run_pipeline(input_path, keep_video=False):
         ]
         if keep_video:
             cmd.append('--keep-video')
+        if staged_sub:
+            cmd.extend(['--subtitle', staged_sub])
 
         process = subprocess.Popen(
             cmd,
@@ -123,6 +156,11 @@ def run_pipeline(input_path, keep_video=False):
         broadcast_progress('error', str(e), 0)
     finally:
         current_job['active'] = False
+        # Clean up staged subtitle
+        staging_dir = OUTPUT_DIR / '_staging'
+        if staging_dir.exists():
+            import shutil
+            shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
 # ── API Routes ─────────────────────────────────────────────────────
@@ -139,6 +177,32 @@ def gui_static(filename):
     """Serve GUI static files (font, etc)."""
     gui_dir = Path(__file__).parent / 'gui'
     return send_from_directory(str(gui_dir), filename)
+
+
+@app.route('/api/stage_subtitle', methods=['POST'])
+def stage_subtitle():
+    """Stage a subtitle file to be used with the next processing job."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file in request'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+
+    staging_dir = OUTPUT_DIR / '_staging'
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save with original extension
+    ext = Path(file.filename).suffix.lower()
+    staged_path = staging_dir / f'subtitle{ext}'
+    file.save(str(staged_path))
+
+    # If SRT, also convert to VTT
+    if ext == '.srt':
+        vtt_path = staging_dir / 'subtitle.vtt'
+        srt_to_vtt(str(staged_path), str(vtt_path))
+
+    return jsonify({'success': True, 'staged': str(staged_path)})
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -277,12 +341,66 @@ def get_experience(folder):
 @app.route('/api/video/<path:folder>')
 def serve_video(folder):
     """Serve the video file for the mini player."""
+    # Check output folder first
     video_dir = OUTPUT_DIR / folder
-    for ext in ('.mp4', '.mkv', '.webm'):
+    for ext in ('.mp4', '.mkv', '.webm', '.avi', '.mov'):
         video_file = video_dir / f'video{ext}'
         if video_file.exists():
             return send_file(str(video_file))
-    return jsonify({'error': 'No video file found. Was --keep-video used?'}), 404
+
+    # Check _uploads for uploaded files (match by folder name similarity)
+    uploads_dir = OUTPUT_DIR / '_uploads'
+    if uploads_dir.exists():
+        for f in uploads_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in ('.mp4', '.mkv', '.webm', '.avi', '.mov'):
+                # Match if the upload filename starts with or contains the folder name
+                fname = f.stem.lower().replace('.', ' ').replace('_', ' ')
+                foldername = folder.lower().replace('.', ' ').replace('_', ' ')
+                if fname.startswith(foldername[:20]) or foldername.startswith(fname[:20]):
+                    return send_file(str(f))
+
+    return jsonify({'error': 'No video file found.'}), 404
+
+
+@app.route('/api/upload_subtitle', methods=['POST'])
+def upload_subtitle():
+    """Upload an SRT/VTT subtitle file to pair with a processed video."""
+    folder = request.form.get('folder', '').strip()
+    if not folder:
+        return jsonify({'error': 'No folder specified'}), 400
+
+    video_dir = OUTPUT_DIR / folder
+    if not video_dir.exists():
+        return jsonify({'error': 'Video folder not found'}), 404
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file in request'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ('.srt', '.vtt', '.txt'):
+        return jsonify({'error': 'Unsupported subtitle format. Use .srt, .vtt, or .txt'}), 400
+
+    # Save subtitle file
+    sub_path = video_dir / f'subtitles{ext}'
+    file.save(str(sub_path))
+
+    # If SRT, convert to VTT for parsing
+    if ext == '.srt':
+        vtt_path = video_dir / 'subtitles.vtt'
+        srt_to_vtt(str(sub_path), str(vtt_path))
+        sub_path = vtt_path
+
+    # Re-run experience build with the new subtitles
+    # For now, just return success — full rebuild is Phase 2
+    return jsonify({
+        'success': True,
+        'subtitle_file': str(sub_path),
+        'note': 'Subtitle uploaded. Reprocess the video to rebuild the experience with captions.'
+    })
 
 
 @app.route('/api/frames/<path:folder>/<filename>')

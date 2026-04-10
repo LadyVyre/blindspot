@@ -416,7 +416,8 @@
 
 <div class="input-bar">
   <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." />
-  <div class="drop-zone" id="dropZone">or drop a file</div>
+  <div class="drop-zone" id="dropZone">or drop a video</div>
+  <div class="drop-zone" id="subDropZone" style="border-color: #ffb86c55; color: #888;">+ subtitles (.srt)</div>
   <button class="btn" id="processBtn" onclick="processVideo()">Process</button>
 </div>
 
@@ -542,6 +543,47 @@
     input.click();
   });
 
+  // ── Subtitle Drop Zone ──
+  const subDropZone = document.getElementById('subDropZone');
+  let pendingSubtitle = null;
+
+  subDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    subDropZone.classList.add('dragover');
+  });
+
+  subDropZone.addEventListener('dragleave', () => {
+    subDropZone.classList.remove('dragover');
+  });
+
+  subDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    subDropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      pendingSubtitle = file;
+      subDropZone.textContent = file.name;
+      subDropZone.style.borderColor = '#ffb86c';
+      subDropZone.style.color = '#ffb86c';
+    }
+  });
+
+  subDropZone.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.srt,.vtt,.txt';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        pendingSubtitle = file;
+        subDropZone.textContent = file.name;
+        subDropZone.style.borderColor = '#ffb86c';
+        subDropZone.style.color = '#ffb86c';
+      }
+    };
+    input.click();
+  });
+
   // ── Video Player ──
   const videoPlayer = document.getElementById('videoPlayer');
   const youtubeContainer = document.getElementById('youtubeContainer');
@@ -627,6 +669,38 @@
     } else if (playerMode === 'local') {
       videoPlayer.currentTime = seconds;
       videoPlayer.play();
+    }
+  }
+
+  // ── Subtitle Upload ──
+  async function uploadSubtitle() {
+    if (!pendingSubtitle || !currentFolder) {
+      // Try to get folder from status
+      try {
+        const status = await fetch(`${API}/api/status`).then(r => r.json());
+        if (status.folder) currentFolder = status.folder;
+      } catch (e) {}
+    }
+    if (!pendingSubtitle) return;
+
+    const folder = currentFolder || (await fetch(`${API}/api/status`).then(r => r.json())).folder;
+    if (!folder) return;
+
+    const formData = new FormData();
+    formData.append('file', pendingSubtitle);
+    formData.append('folder', folder);
+
+    try {
+      await fetch(`${API}/api/upload_subtitle`, {
+        method: 'POST',
+        body: formData
+      });
+      pendingSubtitle = null;
+      subDropZone.textContent = '+ subtitles (.srt)';
+      subDropZone.style.borderColor = '#ffb86c55';
+      subDropZone.style.color = '#888';
+    } catch (err) {
+      console.error('Subtitle upload failed:', err);
     }
   }
 
@@ -736,7 +810,7 @@
       if (data.step === 'done') {
         evtSource.close();
         processBtn.disabled = false;
-        // Fetch the completed experience
+
         setTimeout(loadLatestExperience, 500);
       }
 
@@ -758,46 +832,59 @@
       progressLabel.textContent = 'Connection lost — is the server running?';
     };
 
-    // Trigger the pipeline — file upload or URL
-    if (pendingFile) {
-      // Upload the file
-      const formData = new FormData();
-      formData.append('file', pendingFile);
-      progressLabel.textContent = `Uploading ${pendingFile.name}...`;
+    // Trigger the pipeline — upload subtitle first if present, then process
+    async function startPipeline() {
+      try {
+        if (pendingFile) {
+          // Step 1: Upload subtitle first if we have one
+          if (pendingSubtitle) {
+            progressLabel.textContent = 'Uploading subtitles...';
+            const subForm = new FormData();
+            subForm.append('file', pendingSubtitle);
+            await fetch(`${API}/api/stage_subtitle`, { method: 'POST', body: subForm });
+            pendingSubtitle = null;
+            subDropZone.textContent = '+ subtitles (.srt)';
+            subDropZone.style.borderColor = '#ffb86c55';
+            subDropZone.style.color = '#888';
+          }
 
-      fetch(`${API}/api/upload`, {
-        method: 'POST',
-        body: formData
-      }).then(r => r.json()).then(data => {
-        if (data.error) {
-          progressLabel.textContent = 'Error: ' + data.error;
-          processBtn.disabled = false;
-          evtSource.close();
+          // Step 2: Upload video
+          progressLabel.textContent = `Uploading ${pendingFile.name}...`;
+          const formData = new FormData();
+          formData.append('file', pendingFile);
+
+          const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          pendingFile = null;
+        } else {
+          // URL mode — subtitle first if present
+          if (pendingSubtitle) {
+            const subForm = new FormData();
+            subForm.append('file', pendingSubtitle);
+            await fetch(`${API}/api/stage_subtitle`, { method: 'POST', body: subForm });
+            pendingSubtitle = null;
+            subDropZone.textContent = '+ subtitles (.srt)';
+            subDropZone.style.borderColor = '#ffb86c55';
+            subDropZone.style.color = '#888';
+          }
+
+          const res = await fetch(`${API}/api/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input, keep_video: false })
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
         }
-        pendingFile = null;
-      }).catch(err => {
-        progressLabel.textContent = 'Upload failed. Is the server running?';
+      } catch (err) {
+        progressLabel.textContent = 'Error: ' + err.message;
         processBtn.disabled = false;
         evtSource.close();
-      });
-    } else {
-      // URL mode
-      fetch(`${API}/api/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, keep_video: false })
-      }).then(r => r.json()).then(data => {
-        if (data.error) {
-          progressLabel.textContent = 'Error: ' + data.error;
-          processBtn.disabled = false;
-          evtSource.close();
-        }
-      }).catch(err => {
-        progressLabel.textContent = 'Failed to reach server. Is it running?';
-        processBtn.disabled = false;
-        evtSource.close();
-      });
+      }
     }
+
+    startPipeline();
   }
 
   // ── Load Experience ──

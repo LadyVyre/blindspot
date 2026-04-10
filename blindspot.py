@@ -644,6 +644,8 @@ def main():
                         help='Skip frame extraction (captions only)')
     parser.add_argument('--keep-video', action='store_true',
                         help='Keep the downloaded video file (default: delete after frame extraction)')
+    parser.add_argument('--subtitle', type=str, default=None,
+                        help='Path to external subtitle file (.srt, .vtt, .txt) to use instead of YouTube captions')
 
     args = parser.parse_args()
     output_base = Path(args.output)
@@ -681,8 +683,7 @@ def main():
         caption_path = None
 
         step(STEP_LOCAL_CAPTIONS, local_path.name)
-        print('[blindspot]   Local file detected. Whisper caption extraction is Phase 2.')
-        print('[blindspot]   Proceeding with interval-based frame extraction.')
+        print('[blindspot]   Local file detected.')
 
     if not video_path or not video_path.exists():
         print('[blindspot] Error: No video file found after download. Check the URL or file path.')
@@ -690,23 +691,53 @@ def main():
 
     # --- Step 2: Parse captions -------------------------------------------
     captions = []
-    if is_url:
-        step(STEP_CAPTIONS)
-    if caption_path and caption_path.exists():
+    step(STEP_CAPTIONS if is_url else STEP_LOCAL_CAPTIONS)
+
+    # Check external subtitle file first (--subtitle flag)
+    if args.subtitle and Path(args.subtitle).exists():
+        sub_path = Path(args.subtitle)
+        print(f'[blindspot]   Using external subtitle: {sub_path.name}')
+        # Copy to output folder
+        import shutil
+        dest = video_dir / sub_path.name
+        shutil.copy2(str(sub_path), str(dest))
+        # Parse it (handle both VTT and SRT)
+        if sub_path.suffix.lower() == '.srt':
+            # Convert SRT to VTT first
+            vtt_dest = video_dir / 'subtitles.vtt'
+            with open(str(sub_path), 'r', encoding='utf-8') as f:
+                content = f.read()
+            content = content.replace(',', '.')
+            with open(str(vtt_dest), 'w', encoding='utf-8') as f:
+                f.write('WEBVTT\n\n')
+                f.write(content)
+            captions = parse_vtt(str(vtt_dest))
+        else:
+            captions = parse_vtt(str(sub_path))
+        print(f'[blindspot]   Found {len(captions)} caption entries from subtitle file.')
+    elif caption_path and caption_path.exists():
         print(f'[blindspot]   Parsing captions: {caption_path.name}')
         captions = parse_vtt(str(caption_path))
         print(f'[blindspot]   Found {len(captions)} unique caption entries after dedup.')
     elif is_url:
-        print('[blindspot]   No captions available from YouTube. Using interval-based frames.')
+        print('[blindspot]   No captions available from YouTube.')
+    else:
+        print('[blindspot]   No captions available.')
+        print('[blindspot]   Tip: Add subtitles with --subtitle path/to/file.srt')
+        print('[blindspot]   Or use the GUI to upload an .srt file alongside your video.')
 
     # --- Step 3: Extract frames -------------------------------------------
     frames = []
-    if not args.no_frames:
+    if args.no_frames:
+        print('[blindspot]   Frame extraction skipped (--no-frames).')
+    elif not captions and is_local:
+        # No captions on local file = no auto frames. Let user do it manually.
+        print('[blindspot]   No captions found — skipping auto frame extraction.')
+        print('[blindspot]   Use the mini player in the GUI to grab frames manually.')
+    else:
         step(STEP_FRAMES if is_url else STEP_LOCAL_FRAMES)
         frames = extract_frames(video_path, captions, video_dir, args.interval)
         print(f'[blindspot]   Extracted {len(frames)} frames total.')
-    else:
-        print('[blindspot]   Frame extraction skipped (--no-frames).')
 
     # --- Step 4: Build experience documents --------------------------------
     step(STEP_BUILD if is_url else STEP_LOCAL_BUILD)
