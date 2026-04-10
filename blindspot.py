@@ -208,7 +208,7 @@ def download_video(url, output_dir):
         print(f'[blindspot]   Warning: Could not fetch title ({exc}). Using "untitled".')
         title = 'untitled'
 
-    safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:80]
+    safe_title = re.sub(r'[<>:"/\\|?*#%&{}!@\']', '_', title)[:80]
     video_dir = output_dir / safe_title
     video_dir.mkdir(parents=True, exist_ok=True)
 
@@ -676,7 +676,7 @@ def main():
     else:
         local_path = Path(input_path).resolve()
         title = local_path.stem
-        safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:80]
+        safe_title = re.sub(r'[<>:"/\\|?*#%&{}!@\']', '_', title)[:80]
         video_dir = output_base / safe_title
         video_dir.mkdir(parents=True, exist_ok=True)
         video_path = local_path
