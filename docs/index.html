@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blindspot</title>
+<script src="https://www.youtube.com/iframe_api"></script>
+<style>
+  @font-face {
+    font-family: 'Parang Sondaica';
+    src: url('./ParangSondaica.ttf') format('truetype');
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0f0f12;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  canvas#starfield {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .nebula {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background:
+      radial-gradient(ellipse at 20% 50%, hsla(270, 40%, 10%, 0.2) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 30%, hsla(280, 30%, 8%, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 80%, hsla(260, 25%, 6%, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .header, .input-bar, .progress-bar, .main {
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: #16161d;
+    border-bottom: 1px solid #2a2a35;
+    flex-shrink: 0;
+  }
+
+  .header h1 {
+    font-family: 'Parang Sondaica', 'Segoe UI', system-ui, sans-serif;
+    font-size: 4.8rem;
+    color: #c89cff;
+    font-weight: 400;
+    letter-spacing: 1.5px;
+  }
+
+  .header .subtitle {
+    font-size: 0.75rem;
+    color: #666;
+    text-decoration: none;
+    transition: color 0.2s;
+    display: block;
+  }
+
+  .header .subtitle:hover {
+    color: #c89cff;
+  }
+
+  /* ── Input Bar ── */
+  .input-bar {
+    display: flex;
+    gap: 10px;
+    padding: 16px 20px;
+    background: #1a1a24;
+    border-bottom: 1px solid #2a2a35;
+    flex-shrink: 0;
+  }
+
+  .input-bar input {
+    flex: 1;
+    background: #0f0f12;
+    border: 1px solid #2a2a35;
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-bar input:focus {
+    border-color: #c89cff;
+  }
+
+  .input-bar input::placeholder {
+    color: #555;
+  }
+
+  .btn {
+    background: #c89cff;
+    color: #0f0f12;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: #d4b0ff; }
+  .btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: #c89cff;
+    border: 1px solid #c89cff;
+  }
+
+  .btn-secondary:hover { background: rgba(200, 156, 255, 0.1); }
+
+  .drop-zone {
+    padding: 10px 16px;
+    border: 1px dashed #2a2a35;
+    border-radius: 6px;
+    color: #555;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #c89cff;
+    color: #c89cff;
+  }
+
+  /* ── Progress ── */
+  .progress-bar {
+    padding: 8px 20px;
+    background: #16161d;
+    border-bottom: 1px solid #2a2a35;
+    display: none;
+    flex-shrink: 0;
+  }
+
+  .progress-bar.active { display: block; }
+
+  .progress-track {
+    height: 4px;
+    background: #2a2a35;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: #c89cff;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  .progress-label {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 6px;
+  }
+
+  /* ── Main Content ── */
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── Video Player Panel ── */
+  .player-panel {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #2a2a35;
+    overflow: hidden;
+  }
+
+  .player-panel video {
+    width: 100%;
+    background: #000;
+    flex-shrink: 0;
+  }
+
+  .player-controls {
+    padding: 10px 16px;
+    background: #16161d;
+    border-top: 1px solid #2a2a35;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .grabs-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .player-controls .timestamp {
+    font-size: 0.85rem;
+    color: #c89cff;
+    font-family: monospace;
+    min-width: 60px;
+  }
+
+  .grab-btn {
+    background: #c89cff;
+    color: #0f0f12;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .grab-btn:hover { background: #d4b0ff; }
+
+  .note-input {
+    flex: 1;
+    background: #1a1a24;
+    border: 1px solid #c89cff55;
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: #e0e0e0;
+    font-size: 0.8rem;
+    outline: none;
+  }
+
+  .note-input:focus { border-color: #c89cff; background: #22222e; }
+  .note-input::placeholder { color: #888; }
+
+  /* ── Custom Grabs List ── */
+  .grabs-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 16px;
+    min-height: 0;
+  }
+
+  .grab-entry {
+    display: flex;
+    gap: 10px;
+    padding: 8px;
+    margin-bottom: 8px;
+    background: #1a1a24;
+    border-radius: 6px;
+    border-left: 3px solid #c89cff;
+    align-items: center;
+  }
+
+  .grab-entry img {
+    width: 80px;
+    border-radius: 3px;
+  }
+
+  .grab-entry .grab-time {
+    color: #c89cff;
+    font-family: monospace;
+    font-size: 0.8rem;
+    min-width: 45px;
+  }
+
+  .grab-entry .grab-note {
+    flex: 1;
+    font-size: 0.85rem;
+    color: #d0d0d0;
+  }
+
+  .grab-entry .grab-delete {
+    color: #666;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .grab-entry .grab-delete:hover { color: #ff6b6b; }
+
+  /* ── Experience Panel ── */
+  .experience-panel {
+    width: 50%;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .moment {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: #1a1a24;
+    border-radius: 8px;
+    border-left: 3px solid #c89cff;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .moment:hover { background: #22222e; }
+  .moment.human-flagged { border-left-color: #ffb86c; }
+
+  .moment-time {
+    color: #c89cff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    min-width: 45px;
+    flex-shrink: 0;
+    font-family: monospace;
+  }
+
+  .moment-frame img {
+    width: 160px;
+    border-radius: 4px;
+  }
+
+  .moment-text {
+    flex: 1;
+    font-size: 0.85rem;
+    color: #d0d0d0;
+    line-height: 1.5;
+  }
+
+  /* ── Empty State ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #444;
+    text-align: center;
+    padding: 40px;
+  }
+
+  .empty-state h2 {
+    font-size: 1.2rem;
+    color: #555;
+    margin-bottom: 8px;
+  }
+
+  .empty-state p {
+    font-size: 0.85rem;
+    max-width: 400px;
+    line-height: 1.5;
+  }
+
+  /* ── Top Bar ── */
+  .topbar {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 4px;
+    background: #0a0a0e;
+    border-bottom: 1px solid #1a1a24;
+    flex-shrink: 0;
+  }
+
+  .topbar a {
+    font-size: 0.7rem;
+    color: #666;
+    text-decoration: none;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+
+  .topbar a:hover {
+    color: #c89cff;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0f0f12; }
+  ::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a45; }
+</style>
+</head>
+<body>
+
+<canvas id="starfield"></canvas>
+<div class="nebula"></div>
+
+<div class="topbar">
+  <a href="https://ctrl-alt-bloom.pages.dev/studio" target="_blank">Vyre Studio</a>
+</div>
+
+<div class="header">
+  <div>
+    <h1>BLINDSPOT</h1>
+  </div>
+</div>
+
+<div class="input-bar">
+  <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." />
+  <div class="drop-zone" id="dropZone">or drop a file</div>
+  <button class="btn" id="processBtn" onclick="processVideo()">Process</button>
+</div>
+
+<div class="progress-bar" id="progressBar">
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="progress-label" id="progressLabel">Starting...</div>
+</div>
+
+<div class="main">
+  <!-- Left: Video Player + Custom Grabs -->
+  <div class="player-panel" id="playerPanel" style="display: none;">
+    <!-- YouTube embed for URLs -->
+    <div id="youtubeContainer" style="display: none; width: 100%; flex-shrink: 0;">
+      <div id="youtubePlayer" style="width: 100%; aspect-ratio: 16/9;"></div>
+    </div>
+    <!-- Native video for local files -->
+    <video id="videoPlayer" controls style="display: none;"></video>
+    <div class="player-controls">
+      <span class="timestamp" id="currentTime">0:00</span>
+      <input class="note-input" id="grabNote" placeholder="Add a note (optional)..." />
+      <button class="grab-btn" onclick="grabFrame()">Grab Frame</button>
+    </div>
+    <div class="grabs-section">
+      <div class="grabs-list" id="grabsList"></div>
+      <div id="confirmBar" style="display: none; padding: 10px 16px; border-top: 1px solid #2a2a35; text-align: center; flex-shrink: 0;">
+        <button class="btn" onclick="confirmGrabs()" style="width: 100%;">Confirm & Add to Timeline</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Experience Timeline / Empty State -->
+  <div class="experience-panel" id="experiencePanel">
+    <div class="empty-state" id="emptyState">
+      <h2>No video processed yet</h2>
+      <p>Paste a YouTube URL or drop a video file above. Blindspot will extract captions, grab frames, and build an experience your AI can read.</p>
+    </div>
+    <div id="experienceContent" style="display: none;"></div>
+  </div>
+</div>
+
+
+<script>
+  // ── Animated Starfield ──
+  const sfCanvas = document.getElementById('starfield');
+  const sfCtx = sfCanvas.getContext('2d');
+  let stars = [];
+  const STAR_COUNT = 200;
+
+  function sfResize() { sfCanvas.width = window.innerWidth; sfCanvas.height = window.innerHeight; }
+
+  function createStars() {
+    stars = [];
+    for (let i = 0; i < STAR_COUNT; i++) {
+      stars.push({
+        x: Math.random() * sfCanvas.width, y: Math.random() * sfCanvas.height,
+        radius: Math.random() * 1.4 + 0.3, baseAlpha: Math.random() * 0.55 + 0.15,
+        alpha: 0, phase: Math.random() * Math.PI * 2, speed: Math.random() * 0.008 + 0.002,
+        hue: Math.random() > 0.85 ? (Math.random() > 0.5 ? 270 : 280) : 0,
+        sat: Math.random() > 0.85 ? 25 : 0,
+      });
+    }
+  }
+
+  function drawStars(time) {
+    sfCtx.clearRect(0, 0, sfCanvas.width, sfCanvas.height);
+    for (const s of stars) {
+      s.alpha = s.baseAlpha * (0.5 + 0.5 * Math.sin(time * s.speed + s.phase));
+      sfCtx.beginPath(); sfCtx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      sfCtx.fillStyle = s.sat > 0 ? `hsla(${s.hue}, ${s.sat}%, 85%, ${s.alpha})` : `rgba(255, 255, 255, ${s.alpha})`;
+      sfCtx.fill();
+      if (s.radius > 1.2 && s.alpha > 0.35) {
+        sfCtx.beginPath(); sfCtx.arc(s.x, s.y, s.radius * 3, 0, Math.PI * 2);
+        sfCtx.fillStyle = `rgba(200, 156, 255, ${s.alpha * 0.06})`; sfCtx.fill();
+      }
+    }
+    requestAnimationFrame(drawStars);
+  }
+
+  window.addEventListener('resize', () => { sfResize(); createStars(); });
+  sfResize(); createStars(); requestAnimationFrame(drawStars);
+
+  // ── Drop Zone ──
+  const dropZone = document.getElementById('dropZone');
+  const urlInput = document.getElementById('urlInput');
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      urlInput.value = file.path || file.name;
+      dropZone.textContent = file.name;
+    }
+  });
+
+  dropZone.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        urlInput.value = file.path || file.name;
+        dropZone.textContent = file.name;
+      }
+    };
+    input.click();
+  });
+
+  // ── Video Player ──
+  const videoPlayer = document.getElementById('videoPlayer');
+  const youtubeContainer = document.getElementById('youtubeContainer');
+  const youtubePlayerEl = document.getElementById('youtubePlayer');
+  const currentTimeDisplay = document.getElementById('currentTime');
+  let ytPlayer = null;
+  let ytTimeInterval = null;
+  let playerMode = null; // 'youtube' or 'local'
+
+  // Native video time tracking
+  videoPlayer.addEventListener('timeupdate', () => {
+    if (playerMode !== 'local') return;
+    const t = videoPlayer.currentTime;
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t % 60);
+    currentTimeDisplay.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  });
+
+  function extractYouTubeId(url) {
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
+  }
+
+  let ytReady = false;
+  window.onYouTubeIframeAPIReady = () => { ytReady = true; };
+
+  function loadYouTubePlayer(videoId) {
+    playerMode = 'youtube';
+    videoPlayer.style.display = 'none';
+    youtubeContainer.style.display = 'block';
+
+    function tryCreate() {
+      if (window.YT && window.YT.Player) {
+        createYTPlayer(videoId);
+      } else {
+        setTimeout(tryCreate, 200);
+      }
+    }
+    tryCreate();
+  }
+
+  function createYTPlayer(videoId) {
+    if (ytPlayer) ytPlayer.destroy();
+    ytPlayer = new YT.Player('youtubePlayer', {
+      videoId: videoId,
+      playerVars: { autoplay: 0, modestbranding: 1, rel: 0 },
+      events: {
+        onReady: () => {
+          // Track time via polling (YT API doesn't have timeupdate event)
+          if (ytTimeInterval) clearInterval(ytTimeInterval);
+          ytTimeInterval = setInterval(() => {
+            if (ytPlayer && ytPlayer.getCurrentTime) {
+              const t = ytPlayer.getCurrentTime();
+              const m = Math.floor(t / 60);
+              const s = Math.floor(t % 60);
+              currentTimeDisplay.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+            }
+          }, 500);
+        }
+      }
+    });
+  }
+
+  function loadLocalPlayer(videoUrl) {
+    playerMode = 'local';
+    youtubeContainer.style.display = 'none';
+    videoPlayer.style.display = 'block';
+    videoPlayer.src = videoUrl;
+  }
+
+  function getCurrentPlayerTime() {
+    if (playerMode === 'youtube' && ytPlayer && ytPlayer.getCurrentTime) {
+      return ytPlayer.getCurrentTime();
+    } else if (playerMode === 'local') {
+      return videoPlayer.currentTime;
+    }
+    return 0;
+  }
+
+  function seekTo(seconds) {
+    if (playerMode === 'youtube' && ytPlayer && ytPlayer.seekTo) {
+      ytPlayer.seekTo(seconds, true);
+    } else if (playerMode === 'local') {
+      videoPlayer.currentTime = seconds;
+      videoPlayer.play();
+    }
+  }
+
+  // ── Custom Frame Grab — Staging Area ──
+  const stagedGrabs = [];
+
+  function grabFrame() {
+    const time = getCurrentPlayerTime();
+    const note = document.getElementById('grabNote').value.trim();
+    const m = Math.floor(time / 60);
+    const s = Math.floor(time % 60);
+    const display = `${m}:${s.toString().padStart(2, '0')}`;
+
+    stagedGrabs.push({ time, display, note: note || '' });
+    document.getElementById('grabNote').value = '';
+    renderStagedGrabs();
+  }
+
+  function renderStagedGrabs() {
+    const list = document.getElementById('grabsList');
+    const confirmBar = document.getElementById('confirmBar');
+
+    if (stagedGrabs.length === 0) {
+      list.innerHTML = '';
+      confirmBar.style.display = 'none';
+      return;
+    }
+
+    confirmBar.style.display = 'block';
+    list.innerHTML = stagedGrabs.map((g, i) => `
+      <div class="grab-entry">
+        <span class="grab-time">${g.display}</span>
+        <span class="grab-note">${g.note || '(no note)'}</span>
+        <span class="grab-delete" onclick="removeStagedGrab(${i})">x</span>
+      </div>
+    `).join('');
+  }
+
+  function removeStagedGrab(index) {
+    stagedGrabs.splice(index, 1);
+    renderStagedGrabs();
+  }
+
+  async function confirmGrabs() {
+    if (!currentFolder || stagedGrabs.length === 0) return;
+
+    const confirmBtn = document.querySelector('#confirmBar .btn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Saving...';
+
+    for (const grab of stagedGrabs) {
+      try {
+        await fetch(`${API}/api/grab`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            folder: currentFolder,
+            timestamp: grab.time,
+            note: grab.note
+          })
+        });
+      } catch (err) {
+        console.error('Grab save failed:', err);
+      }
+    }
+
+    // Clear staging
+    stagedGrabs.length = 0;
+    renderStagedGrabs();
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Confirm & Add to Timeline';
+
+    // Reload experience to show the new grabs in the timeline
+    loadLatestExperience();
+  }
+
+  // ── Backend Config ──
+  const API = window.location.origin.includes('localhost')
+    ? window.location.origin
+    : 'http://localhost:8765';
+  let currentFolder = null;
+
+  // ── Process — real backend ──
+  function processVideo() {
+    const input = urlInput.value.trim();
+    if (!input) return;
+
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const progressLabel = document.getElementById('progressLabel');
+    const processBtn = document.getElementById('processBtn');
+
+    progressBar.classList.add('active');
+    processBtn.disabled = true;
+    progressFill.style.width = '5%';
+    progressLabel.textContent = 'Starting...';
+
+    // Connect SSE for progress
+    const evtSource = new EventSource(`${API}/api/progress`);
+    evtSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.step === 'heartbeat') return;
+
+      if (data.pct > 0) progressFill.style.width = data.pct + '%';
+      if (data.detail) progressLabel.textContent = data.detail;
+
+      if (data.step === 'done') {
+        evtSource.close();
+        processBtn.disabled = false;
+        // Fetch the completed experience
+        setTimeout(loadLatestExperience, 500);
+      }
+
+      if (data.step === 'error') {
+        evtSource.close();
+        processBtn.disabled = false;
+        progressLabel.textContent = 'Error: ' + data.detail;
+        progressFill.style.width = '100%';
+        progressFill.style.background = '#ff6b6b';
+        setTimeout(() => {
+          progressFill.style.background = '#c89cff';
+        }, 3000);
+      }
+    };
+
+    evtSource.onerror = () => {
+      evtSource.close();
+      processBtn.disabled = false;
+      progressLabel.textContent = 'Connection lost — is the server running?';
+    };
+
+    // Trigger the pipeline
+    fetch(`${API}/api/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input, keep_video: true })
+    }).then(r => r.json()).then(data => {
+      if (data.error) {
+        progressLabel.textContent = 'Error: ' + data.error;
+        processBtn.disabled = false;
+        evtSource.close();
+      }
+    }).catch(err => {
+      progressLabel.textContent = 'Failed to reach server. Is it running?';
+      processBtn.disabled = false;
+      evtSource.close();
+    });
+  }
+
+  // ── Load Experience ──
+  async function loadLatestExperience() {
+    try {
+      const status = await fetch(`${API}/api/status`).then(r => r.json());
+      if (!status.folder) return;
+
+      currentFolder = status.folder;
+      const experience = await fetch(`${API}/api/experience/${encodeURIComponent(currentFolder)}`).then(r => r.json());
+
+      // Show player panel
+      const playerPanel = document.getElementById('playerPanel');
+      playerPanel.style.display = 'flex';
+
+      // Determine player mode based on source
+      const source = (experience.metadata && experience.metadata.source) || urlInput.value;
+      const ytId = extractYouTubeId(source);
+      if (ytId) {
+        loadYouTubePlayer(ytId);
+      } else {
+        // Local file — try serving from backend
+        loadLocalPlayer(`${API}/api/video/${encodeURIComponent(currentFolder)}`);
+      }
+
+      // Render experience timeline
+      const emptyState = document.getElementById('emptyState');
+      const experienceContent = document.getElementById('experienceContent');
+      emptyState.style.display = 'none';
+      experienceContent.style.display = 'block';
+
+      const moments = experience.moments || [];
+      experienceContent.innerHTML = moments.map(m => {
+        const frameHtml = m.frame
+          ? `<div class="moment-frame"><img src="${API}/api/frames/${encodeURIComponent(currentFolder)}/${m.frame.replace('frames/', '')}" alt="Frame at ${m.display}"></div>`
+          : '';
+        const captionHtml = (m.captions || []).map(c => `<div>${c}</div>`).join('');
+
+        return `
+          <div class="moment" onclick="seekTo(${m.time})">
+            <div class="moment-time">${m.display}</div>
+            ${frameHtml}
+            <div class="moment-text">${captionHtml || '<em>no caption</em>'}</div>
+          </div>
+        `;
+      }).join('');
+
+      // Load custom grabs and merge into timeline in correct chronological order
+      try {
+        const grabData = await fetch(`${API}/api/custom_grabs/${encodeURIComponent(currentFolder)}`).then(r => r.json());
+        const grabs = grabData.grabs || [];
+        if (grabs.length > 0) {
+          // Build combined timeline: auto moments + human grabs, sorted by time
+          const allItems = [];
+
+          for (const m of moments) {
+            allItems.push({ type: 'auto', time: m.time, data: m });
+          }
+          for (const g of grabs) {
+            allItems.push({ type: 'human', time: g.timestamp, data: g });
+          }
+
+          allItems.sort((a, b) => a.time - b.time);
+
+          // Re-render the full timeline
+          experienceContent.innerHTML = allItems.map(item => {
+            if (item.type === 'auto') {
+              const m = item.data;
+              const frameHtml = m.frame
+                ? `<div class="moment-frame"><img src="${API}/api/frames/${encodeURIComponent(currentFolder)}/${m.frame.replace('frames/', '')}" alt="Frame at ${m.display}"></div>`
+                : '';
+              const captionHtml = (m.captions || []).map(c => `<div>${c}</div>`).join('');
+              return `
+                <div class="moment" onclick="seekTo(${m.time})">
+                  <div class="moment-time">${m.display}</div>
+                  ${frameHtml}
+                  <div class="moment-text">${captionHtml || '<em>no caption</em>'}</div>
+                </div>
+              `;
+            } else {
+              const g = item.data;
+              return `
+                <div class="moment human-flagged" onclick="seekTo(${g.timestamp})">
+                  <div class="moment-time" style="color: #ffb86c;">${g.display}</div>
+                  <div class="moment-frame"><img src="${API}/api/custom_frame/${encodeURIComponent(currentFolder)}/${g.frame.replace('custom_frames/', '')}" alt="Custom frame"></div>
+                  <div class="moment-text">${g.note || '<em>human-flagged moment</em>'}</div>
+                </div>
+              `;
+            }
+          }).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load custom grabs:', err);
+      }
+
+    } catch (err) {
+      console.error('Failed to load experience:', err);
+    }
+  }
+
+
+  // ── Experience Moment Click → Seek Video ──
+  function seekTo(seconds) {
+    videoPlayer.currentTime = seconds;
+    videoPlayer.play();
+  }
+</script>
+
+</body>
+</html>
