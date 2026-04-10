@@ -503,6 +503,7 @@
   // ── Drop Zone ──
   const dropZone = document.getElementById('dropZone');
   const urlInput = document.getElementById('urlInput');
+  let pendingFile = null;  // Store the actual File object for upload
 
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -518,7 +519,9 @@
     dropZone.classList.remove('dragover');
     const file = e.dataTransfer.files[0];
     if (file) {
-      urlInput.value = file.path || file.name;
+      pendingFile = file;
+      urlInput.value = '';
+      urlInput.placeholder = file.name;
       dropZone.textContent = file.name;
     }
   });
@@ -526,11 +529,13 @@
   dropZone.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'video/*';
+    input.accept = 'video/*,.mp4,.mkv,.webm,.avi,.mov';
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
-        urlInput.value = file.path || file.name;
+        pendingFile = file;
+        urlInput.value = '';
+        urlInput.placeholder = file.name;
         dropZone.textContent = file.name;
       }
     };
@@ -707,7 +712,7 @@
   // ── Process — real backend ──
   function processVideo() {
     const input = urlInput.value.trim();
-    if (!input) return;
+    if (!input && !pendingFile) return;
 
     const progressBar = document.getElementById('progressBar');
     const progressFill = document.getElementById('progressFill');
@@ -753,22 +758,46 @@
       progressLabel.textContent = 'Connection lost — is the server running?';
     };
 
-    // Trigger the pipeline
-    fetch(`${API}/api/process`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, keep_video: true })
-    }).then(r => r.json()).then(data => {
-      if (data.error) {
-        progressLabel.textContent = 'Error: ' + data.error;
+    // Trigger the pipeline — file upload or URL
+    if (pendingFile) {
+      // Upload the file
+      const formData = new FormData();
+      formData.append('file', pendingFile);
+      progressLabel.textContent = `Uploading ${pendingFile.name}...`;
+
+      fetch(`${API}/api/upload`, {
+        method: 'POST',
+        body: formData
+      }).then(r => r.json()).then(data => {
+        if (data.error) {
+          progressLabel.textContent = 'Error: ' + data.error;
+          processBtn.disabled = false;
+          evtSource.close();
+        }
+        pendingFile = null;
+      }).catch(err => {
+        progressLabel.textContent = 'Upload failed. Is the server running?';
         processBtn.disabled = false;
         evtSource.close();
-      }
-    }).catch(err => {
-      progressLabel.textContent = 'Failed to reach server. Is it running?';
-      processBtn.disabled = false;
-      evtSource.close();
-    });
+      });
+    } else {
+      // URL mode
+      fetch(`${API}/api/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input, keep_video: false })
+      }).then(r => r.json()).then(data => {
+        if (data.error) {
+          progressLabel.textContent = 'Error: ' + data.error;
+          processBtn.disabled = false;
+          evtSource.close();
+        }
+      }).catch(err => {
+        progressLabel.textContent = 'Failed to reach server. Is it running?';
+        processBtn.disabled = false;
+        evtSource.close();
+      });
+    }
   }
 
   // ── Load Experience ──

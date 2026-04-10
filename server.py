@@ -25,6 +25,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5GB upload limit
 
 OUTPUT_DIR = Path('E:/Dante/Vyre Studio/blindspot/output')
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -140,6 +141,39 @@ def gui_static(filename):
     return send_from_directory(str(gui_dir), filename)
 
 
+@app.route('/api/upload', methods=['POST'])
+def upload_video():
+    """Upload a local video file for processing."""
+    if current_job['active']:
+        return jsonify({'error': 'A job is already running'}), 409
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file in request'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+
+    # Save to uploads dir
+    uploads_dir = OUTPUT_DIR / '_uploads'
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    # Sanitize filename
+    safe_name = re.sub(r'[<>:"/\\|?*]', '_', file.filename)
+    upload_path = uploads_dir / safe_name
+    file.save(str(upload_path))
+
+    # Process with keep_video=True so it stays for the local player
+    thread = threading.Thread(
+        target=run_pipeline,
+        args=(str(upload_path), True),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'status': 'started', 'input': file.filename, 'type': 'upload'})
+
+
 @app.route('/api/process', methods=['POST'])
 def process_video():
     """Start processing a video URL or file path."""
@@ -148,7 +182,7 @@ def process_video():
 
     data = request.json or {}
     input_path = data.get('input', '').strip()
-    keep_video = data.get('keep_video', False)  # YouTube embed handles playback, no need to keep
+    keep_video = data.get('keep_video', False)
 
     if not input_path:
         return jsonify({'error': 'No input provided'}), 400
@@ -159,6 +193,10 @@ def process_video():
 
     if not is_url and not is_file:
         return jsonify({'error': f'Not a valid URL or file path: {input_path}'}), 400
+
+    # Local files keep video for the native player
+    if is_file:
+        keep_video = True
 
     # Start pipeline in background
     thread = threading.Thread(
