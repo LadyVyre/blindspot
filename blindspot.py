@@ -220,6 +220,7 @@ def download_video(url, output_dir):
         '--write-sub', '--write-auto-sub',
         '--sub-lang', 'en',
         '--sub-format', 'vtt',
+        '--restrict-filenames',
         '-o', str(video_dir / 'video.%(ext)s'),
         url
     ]
