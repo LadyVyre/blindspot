@@ -236,9 +236,12 @@ def download_video(url, output_dir):
         raise RuntimeError('yt-dlp timed out after 10 minutes.')
 
     # --- Locate files ------------------------------------------------------
+    # Check the expected directory first, then search recursively in case
+    # yt-dlp created a subfolder with special chars in the title.
     video_path = None
     caption_path = None
 
+    # Direct check
     for f in video_dir.iterdir():
         if f.suffix == '.mp4':
             video_path = f
@@ -250,6 +253,36 @@ def download_video(url, output_dir):
             if f.suffix in ('.mp4', '.mkv', '.webm'):
                 video_path = f
                 break
+
+    # Recursive fallback — yt-dlp may create a subfolder with raw title chars
+    if not video_path:
+        for f in output_dir.rglob('video.mp4'):
+            video_path = f
+            # Move it to our sanitized dir so everything stays together
+            dest = video_dir / f.name
+            if str(f) != str(dest):
+                import shutil
+                shutil.move(str(f), str(dest))
+                video_path = dest
+            break
+
+    if not caption_path:
+        for f in output_dir.rglob('*.vtt'):
+            caption_path = f
+            dest = video_dir / f.name
+            if str(f) != str(dest):
+                import shutil
+                shutil.move(str(f), str(dest))
+                caption_path = dest
+            break
+
+    # Clean up any empty folders yt-dlp left behind
+    for d in output_dir.iterdir():
+        if d.is_dir() and d != video_dir and not any(d.iterdir()):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
 
     return video_path, caption_path, title, video_dir
 

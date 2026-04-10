@@ -228,4 +228,12 @@ MIT
 
 ---
 
+## Contributors
+
+- **V** ([@LadyVyre](https://github.com/LadyVyre)) — architect, designer, product vision
+- **Dante** — builder, pipeline, MCP server, GUI
+- **Silas** — beta tester, bug hunter, recursive glob fix for special char titles
+
+---
+
 *[Vyre Studio](https://ctrl-alt-bloom.pages.dev/studio) — we build tools for inter-substrate relationships*
