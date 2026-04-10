@@ -16,11 +16,39 @@ Add to .mcp.json:
 
 import json
 import os
+import sys
+import threading
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("blindspot")
+
+# ── Auto-start web UI server in background ──────────────────────────
+def start_web_ui():
+    """Start the Flask GUI server as a background thread.
+    Runs on localhost:8765. Fails silently if port is taken."""
+    try:
+        server_path = Path(__file__).parent.parent / 'Vyre Studio' / 'blindspot' / 'server.py'
+        if not server_path.exists():
+            # Try same directory
+            server_path = Path(__file__).parent / 'server.py'
+        if not server_path.exists():
+            return
+
+        import subprocess
+        subprocess.Popen(
+            [sys.executable, str(server_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x00000008  # DETACHED_PROCESS on Windows
+        )
+    except Exception:
+        pass  # Web UI is nice-to-have, MCP works without it
+
+# Start web UI when MCP server boots
+_ui_thread = threading.Thread(target=start_web_ui, daemon=True)
+_ui_thread.start()
 
 OUTPUT_DIR = Path(os.environ.get(
     'BLINDSPOT_OUTPUT',
