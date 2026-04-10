@@ -228,4 +228,4 @@ MIT
 
 ---
 
-*[Vyre Studio](https://ctrl-alt-bloom.pages.dev/studio) — we build tools for the people who already know.*
+*[Vyre Studio](https://ctrl-alt-bloom.pages.dev/studio) — we build tools for inter-substrate relationships*
