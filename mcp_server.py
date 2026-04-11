@@ -172,6 +172,127 @@ def blindspot_get_frame(folder: str, index: int = -1, timestamp: float = -1) -> 
 
 
 @mcp.tool()
+def blindspot_process_video(source: str, poll_timeout_seconds: int = 900) -> str:
+    """Process a video through the Blindspot pipeline (frame extraction + caption generation).
+
+    Takes a YouTube URL OR an absolute local file path. Works with both — the backend auto-detects.
+    No human required at the GUI. Spawns the server-side pipeline, polls status until complete,
+    returns the folder name so subsequent calls to list_videos / get_captions / get_frame can consume it.
+
+    This is the "AI initiates + consumes" primitive for autonomous video processing. Use cases:
+    during an autonomous wake, when picking something for yourself to experience, when processing
+    a video for co-viewing before the human opens the player, etc.
+
+    Args:
+        source: YouTube URL (https://...) OR absolute local file path (e.g., E:\\\\Dante\\\\...)
+        poll_timeout_seconds: Max seconds to wait for processing. Default 900 (15 min). Videos
+            under 30 minutes usually finish in 1-5 min; feature-length movies can take 10+ min.
+
+    Returns JSON with status ("done" / "timeout" / "busy" / "error"), folder name (if done),
+    and any error details.
+
+    Note: blocks the tool call until processing completes OR timeout is reached. FastMCP runs
+    tool calls in threads, so this does not freeze other MCP tools during the wait.
+    """
+    import urllib.request
+    import urllib.error
+    import time
+
+    SERVER_BASE = 'http://localhost:8765'
+
+    # 1. Check if a job is already running — refuse to start a second
+    try:
+        with urllib.request.urlopen(f'{SERVER_BASE}/api/status', timeout=5) as r:
+            status = json.loads(r.read())
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "error": f"Could not reach Blindspot server at {SERVER_BASE}: {e}. Is server.py running on port 8765?"
+        })
+
+    if status.get('active'):
+        return json.dumps({
+            "status": "busy",
+            "error": "A job is already running — wait for it to finish, then retry",
+            "current_folder": status.get('folder')
+        })
+
+    # 2. Start the processing job via /api/process (handles URL and local path equally)
+    payload = json.dumps({"input": source}).encode('utf-8')
+    req = urllib.request.Request(
+        f'{SERVER_BASE}/api/process',
+        data=payload,
+        headers={'Content-Type': 'application/json'},
+        method='POST'
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            start_response = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', errors='replace')
+        return json.dumps({"status": "error", "error": f"Process start failed: HTTP {e.code}: {body}"})
+    except Exception as e:
+        return json.dumps({"status": "error", "error": f"Process start failed: {e}"})
+
+    # 3. Poll /api/status every 2s until job completes or timeout
+    deadline = time.time() + poll_timeout_seconds
+    last_folder = None
+    poll_interval = 2.0
+    polls = 0
+
+    while time.time() < deadline:
+        time.sleep(poll_interval)
+        polls += 1
+        try:
+            with urllib.request.urlopen(f'{SERVER_BASE}/api/status', timeout=5) as r:
+                status = json.loads(r.read())
+            if status.get('folder'):
+                last_folder = status['folder']
+            if not status.get('active'):
+                return json.dumps({
+                    "status": "done",
+                    "folder": last_folder,
+                    "source": source,
+                    "poll_count": polls,
+                    "note": "Video is processed. Call blindspot_list_videos to confirm, or blindspot_get_captions / blindspot_get_frame on this folder."
+                })
+        except Exception:
+            # Transient failures during polling — keep trying until deadline
+            pass
+
+    return json.dumps({
+        "status": "timeout",
+        "error": f"Processing did not complete within {poll_timeout_seconds} seconds",
+        "last_known_folder": last_folder,
+        "poll_count": polls
+    })
+
+
+@mcp.tool()
+def blindspot_get_position(folder: str) -> str:
+    """Get the human's current playback position in a video. Returns current_timestamp (seconds), max_watched (furthest point reached), play_state (playing/paused/seeking/ended), and last_update_at.
+
+    Use this before talking about a movie the human is currently watching — stay at or behind max_watched to avoid spoilers. If play_state is 'paused', the human is sitting with a moment; if 'playing', they're moving through. Returns an error if the player hasn't opened this video yet.
+
+    Args:
+        folder: Video folder name (from blindspot_list_videos)
+    """
+    state_path = OUTPUT_DIR / folder / 'state.json'
+    if not state_path.exists():
+        return json.dumps({
+            "error": f"No playback state for '{folder}' — player hasn't been opened yet, or hasn't reported position",
+            "folder": folder,
+            "hint": "The state file is written by the Blindspot player (gui/index.html) as the human plays/pauses/scrubs. If the human hasn't opened this video in the player yet, there's nothing to read."
+        })
+    try:
+        with open(state_path, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        return json.dumps(state, indent=2)
+    except (json.JSONDecodeError, OSError) as e:
+        return json.dumps({"error": f"Failed to read state: {e}"})
+
+
+@mcp.tool()
 def blindspot_get_captions(folder: str, start: float = -1, end: float = -1) -> str:
     """Get captions from a processed video. Optionally filter by time range.
 

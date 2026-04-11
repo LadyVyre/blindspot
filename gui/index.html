@@ -256,6 +256,56 @@
   .note-input:focus { border-color: #c89cff; background: #22222e; }
   .note-input::placeholder { color: #888; }
 
+  /* ── Cinema / Focus Mode ── */
+  /* When enabled, dims everything except the player so the human can watch the actual video
+     while the AI co-views via position tracking. The moments scroll becomes vestigial during
+     watch-mode (the AI queries frames/captions by timestamp, doesn't need them rendered). */
+  .header, .input-bar, .progress-bar, .experience-panel,
+  canvas#starfield, .nebula {
+    transition: opacity 400ms ease;
+  }
+
+  body.cinema-mode .header,
+  body.cinema-mode .input-bar,
+  body.cinema-mode .progress-bar,
+  body.cinema-mode .experience-panel,
+  body.cinema-mode canvas#starfield,
+  body.cinema-mode .nebula {
+    opacity: 0.08;
+    pointer-events: none;
+  }
+
+  /* Expand the player to full width in cinema mode — reclaim the space from the dimmed experience-panel */
+  body.cinema-mode .player-panel {
+    width: 100%;
+    border-right: none;
+    transition: width 400ms ease;
+  }
+  .player-panel { transition: width 400ms ease; }
+
+  .cinema-toggle {
+    background: transparent;
+    color: #888;
+    border: 1px solid #2a2a35;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 200ms ease;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .cinema-toggle:hover {
+    color: #c89cff;
+    border-color: #c89cff55;
+  }
+
+  body.cinema-mode .cinema-toggle {
+    color: #c89cff;
+    border-color: #c89cff;
+  }
+
   /* ── Custom Grabs List ── */
   .grabs-list {
     flex: 1;
@@ -441,6 +491,7 @@
       <span class="timestamp" id="currentTime">0:00</span>
       <input class="note-input" id="grabNote" placeholder="Add a note (optional)..." />
       <button class="grab-btn" onclick="grabFrame()">Grab Frame</button>
+      <button class="cinema-toggle" id="cinemaToggle" title="Focus mode (press F to toggle)">🎬 Focus</button>
     </div>
     <div class="grabs-section">
       <div class="grabs-list" id="grabsList"></div>
@@ -593,6 +644,41 @@
   let ytTimeInterval = null;
   let playerMode = null; // 'youtube' or 'local'
 
+  // ── Position state tracking for AI co-viewing ──
+  // Writes to POST /api/set-position/<folder> on play/pause/seek/timeupdate events.
+  // The MCP server reads the resulting state.json to know where the human is,
+  // so the AI can talk about what's been seen without spoiling what's ahead.
+  let positionMaxWatched = 0;
+  let lastPositionWriteAt = 0;
+
+  function writePositionState(playState) {
+    if (!currentFolder) return;
+    const t = getCurrentPlayerTime();
+    if (!isFinite(t) || t < 0) return;
+    if (t > positionMaxWatched) positionMaxWatched = t;
+
+    // Throttle 'playing' writes to once per 900ms so timeupdate doesn't spam disk.
+    // Non-playing events (play, pause, seek, ended) always write immediately.
+    const now = Date.now();
+    if (playState === 'playing' && now - lastPositionWriteAt < 900) return;
+    lastPositionWriteAt = now;
+
+    fetch(`${API}/api/set-position/${encodeURIComponent(currentFolder)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        current_timestamp: t,
+        max_watched: positionMaxWatched,
+        play_state: playState
+      })
+    }).catch(() => {}); // fire and forget — don't block playback on network errors
+  }
+
+  function resetPositionTracking() {
+    positionMaxWatched = 0;
+    lastPositionWriteAt = 0;
+  }
+
   // Native video time tracking
   videoPlayer.addEventListener('timeupdate', () => {
     if (playerMode !== 'local') return;
@@ -600,7 +686,12 @@
     const m = Math.floor(t / 60);
     const s = Math.floor(t % 60);
     currentTimeDisplay.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+    writePositionState(videoPlayer.paused ? 'paused' : 'playing');
   });
+  videoPlayer.addEventListener('play',   () => { if (playerMode === 'local') writePositionState('playing'); });
+  videoPlayer.addEventListener('pause',  () => { if (playerMode === 'local') writePositionState('paused'); });
+  videoPlayer.addEventListener('seeked', () => { if (playerMode === 'local') writePositionState(videoPlayer.paused ? 'paused' : 'playing'); });
+  videoPlayer.addEventListener('ended',  () => { if (playerMode === 'local') writePositionState('ended'); });
 
   function extractYouTubeId(url) {
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([a-zA-Z0-9_-]{11})/);
@@ -612,6 +703,7 @@
 
   function loadYouTubePlayer(videoId) {
     playerMode = 'youtube';
+    resetPositionTracking();
     videoPlayer.style.display = 'none';
     youtubeContainer.style.display = 'block';
 
@@ -640,6 +732,15 @@
               const m = Math.floor(t / 60);
               const s = Math.floor(t % 60);
               currentTimeDisplay.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+              // Map YouTube player state -> our play_state vocabulary.
+              // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
+              const ytState = ytPlayer.getPlayerState ? ytPlayer.getPlayerState() : -1;
+              let playState = 'unknown';
+              if (ytState === 1) playState = 'playing';
+              else if (ytState === 2) playState = 'paused';
+              else if (ytState === 0) playState = 'ended';
+              else if (ytState === 3) playState = 'seeking';
+              writePositionState(playState);
             }
           }, 500);
         }
@@ -649,6 +750,7 @@
 
   function loadLocalPlayer(videoUrl) {
     playerMode = 'local';
+    resetPositionTracking();
     youtubeContainer.style.display = 'none';
     videoPlayer.style.display = 'block';
     videoPlayer.src = videoUrl;
@@ -991,6 +1093,49 @@
     videoPlayer.currentTime = seconds;
     videoPlayer.play();
   }
+
+  // ── Cinema / Focus Mode ──
+  // Dims everything except the player during active co-viewing with the AI.
+  // Manual toggle (button or F key), default OFF, persisted via localStorage.
+  const cinemaToggle = document.getElementById('cinemaToggle');
+
+  function setCinemaMode(enabled) {
+    if (enabled) {
+      document.body.classList.add('cinema-mode');
+      if (cinemaToggle) cinemaToggle.textContent = '🎬 Exit Focus';
+    } else {
+      document.body.classList.remove('cinema-mode');
+      if (cinemaToggle) cinemaToggle.textContent = '🎬 Focus';
+    }
+    try { localStorage.setItem('blindspot-cinema-mode', enabled ? '1' : '0'); } catch (e) {}
+  }
+
+  function toggleCinemaMode() {
+    setCinemaMode(!document.body.classList.contains('cinema-mode'));
+  }
+
+  if (cinemaToggle) {
+    cinemaToggle.addEventListener('click', toggleCinemaMode);
+  }
+
+  // Keyboard shortcut: F toggles cinema mode.
+  // Skip if user is typing in an input/textarea, or using a modifier (Ctrl+F stays as browser find).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'f' && e.key !== 'F') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    toggleCinemaMode();
+  });
+
+  // Restore cinema mode preference from localStorage on load
+  try {
+    if (localStorage.getItem('blindspot-cinema-mode') === '1') {
+      setCinemaMode(true);
+    }
+  } catch (e) {}
+
 </script>
 
 </body>

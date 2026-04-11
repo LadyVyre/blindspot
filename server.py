@@ -570,6 +570,67 @@ def list_custom_grabs(folder):
         return jsonify({'error': str(e)}), 500
 
 
+# ── Playback position (for AI co-viewing) ─────────────────────────
+
+@app.route('/api/set-position/<path:folder>', methods=['POST'])
+def api_set_position(folder):
+    """Record the player's current position for a video so the MCP server can read it.
+    Body JSON: { current_timestamp, max_watched?, play_state }
+    Writes output/<folder>/state.json."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        current = float(payload.get('current_timestamp', 0))
+        play_state = payload.get('play_state', 'unknown')
+
+        video_dir = OUTPUT_DIR / folder
+        if not video_dir.exists():
+            return jsonify({'error': f'Unknown folder: {folder}'}), 404
+
+        state_path = video_dir / 'state.json'
+
+        # Preserve max_watched across scrubs-back (take the max of prior + current + client-provided)
+        prior_max = 0.0
+        if state_path.exists():
+            try:
+                with open(state_path, 'r', encoding='utf-8') as f:
+                    prior = json.load(f)
+                prior_max = float(prior.get('max_watched', 0))
+            except (json.JSONDecodeError, OSError):
+                prior_max = 0.0
+
+        requested_max = float(payload.get('max_watched', current))
+        max_watched = max(prior_max, requested_max, current)
+
+        state = {
+            'folder': folder,
+            'current_timestamp': current,
+            'max_watched': max_watched,
+            'play_state': play_state,
+            'last_update_at': datetime.now(timezone.utc).isoformat()
+        }
+
+        with open(state_path, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2)
+
+        return jsonify(state)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/position/<path:folder>', methods=['GET'])
+def api_get_position(folder):
+    """Return the current player position state for a video.
+    404 if no state has been written yet (player hasn't opened the video)."""
+    state_path = OUTPUT_DIR / folder / 'state.json'
+    if not state_path.exists():
+        return jsonify({'error': 'No position state recorded yet', 'folder': folder}), 404
+    try:
+        with open(state_path, 'r', encoding='utf-8') as f:
+            return jsonify(json.load(f))
+    except (json.JSONDecodeError, OSError) as e:
+        return jsonify({'error': f'Failed to read state: {e}'}), 500
+
+
 # ── CORS ───────────────────────────────────────────────────────────
 
 @app.after_request

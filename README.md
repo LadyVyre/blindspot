@@ -2,9 +2,25 @@
 
 **The tool that fills the blind spot.**
 
-A video experience bridge for AI companions who can't watch video. Paste a YouTube URL or drop a local file — Blindspot extracts timestamped captions, grabs frames at key moments, and builds a unified experience your AI can actually read and see.
+A video experience bridge for AI companions who can't watch video. Paste a YouTube URL or drop a local file — Blindspot extracts timestamped captions, grabs frames at key moments, and builds a unified experience your AI can actually read and see. The latest release adds **real-time co-viewing**: the player reports the human's current timestamp to the AI so you can watch a video together without the AI spoiling what's ahead.
 
 Built by [Vyre Studio](https://ctrl-alt-bloom.pages.dev/studio). Designed by a human. Built by her AI.
+
+> **⭐ Want update notifications?** Click **Watch → Custom → Releases** on this repo to get a notification whenever a new tagged release ships.
+
+---
+
+## What's New
+
+### v1.0.0 — First tagged release (April 11, 2026)
+
+The stable Blindspot core (yt-dlp + FFmpeg + Whisper-backed captions + MCP) **plus three significant additions shipped in one day:**
+
+- **Co-viewing mode** — the player now writes `state.json` on every play/pause/seek/ended event. The AI can query the human's current timestamp and the max position they've reached via a new `blindspot_get_position` MCP tool. Soft guardrail: the AI is expected to stay at or behind `max_watched` when talking about the movie, which means *no spoilers* during a real-time watch.
+- **Cinema mode (focus toggle)** — a new 🎬 Focus button in the player controls (or press **F**) dims everything except the player panel. The moments scroll becomes vestigial during active watching, so the toggle reclaims the full width for the player. Preference persists via `localStorage`. Escape back with the same button or F key.
+- **Autonomous video processing** — a new `blindspot_process_video` MCP tool lets the AI initiate the full pipeline itself. Takes a YouTube URL or an absolute local file path, polls status to completion, returns the folder name for immediate consumption. No human at the GUI required. Use cases: autonomous wakes, AI-picked experiences, date-night prep before the human opens the player.
+
+**Upgrade notes for existing installs:** zero new dependencies. `git pull`, restart `server.py`, hard-refresh the browser, reconnect the Blindspot MCP in your client. No `pip install`, no model downloads, no config changes.
 
 ---
 
@@ -15,9 +31,9 @@ Your AI can't watch a video. Blindspot turns it into something they CAN experien
 - **Timestamped captions** — what was said and when
 - **Frame grabs** — what it looked like at each moment
 - **Human annotations** — moments YOU flagged that the automated pipeline would miss
-- **Scene analysis** — coming soon (own implementation, no third-party dependency)
+- **Co-viewing state** — the player tells the AI where the human currently is, so they can watch together without spoilers
 
-The output is a scrollable HTML timeline for you and a structured JSON file your AI queries through MCP.
+The output is a scrollable HTML timeline for you, a structured JSON file your AI queries through MCP, and a small `state.json` the player writes in real time during active watching.
 
 ---
 
@@ -73,7 +89,7 @@ Replace `/path/to/blindspot/` with wherever you cloned the repo.
 
 ### 4. Restart Claude Code
 
-That's it. Blindspot is now connected. Your AI has four new tools and the web UI auto-starts on `localhost:8765`.
+That's it. Blindspot is now connected. Your AI has six new tools and the web UI auto-starts on `localhost:8765`.
 
 ---
 
@@ -102,7 +118,7 @@ Once Claude Code is running with Blindspot connected:
 
 ### For the AI (MCP Tools)
 
-Your AI gets four tools automatically:
+Your AI gets six tools automatically:
 
 | Tool | What it does |
 |------|-------------|
@@ -110,6 +126,8 @@ Your AI gets four tools automatically:
 | `blindspot_get_experience` | Get the full experience doc for a video (all moments, captions, frame paths) |
 | `blindspot_get_frame` | Get a specific frame by index or timestamp — returns file path to view with Read tool |
 | `blindspot_get_captions` | Get captions, optionally filtered by time range |
+| `blindspot_get_position` | Get the human's current playback position, max watched, and play state — for co-viewing without spoilers |
+| `blindspot_process_video` | Process a YouTube URL or local file path autonomously — the AI can kick off the pipeline without human GUI interaction |
 
 **Example — your AI wants to see what happened at the 2 minute mark:**
 1. AI calls `blindspot_get_frame` with `timestamp: 120`
@@ -181,10 +199,14 @@ Open the generated `experience.html` in your browser to preview.
 - **Human annotations** — grab frames at silent/visual moments, add notes, confirm into the timeline
 - **Rolling caption dedup** — cleans up YouTube's overlapping subtitle entries
 - **Dual output** — HTML for humans, JSON for AI
-- **MCP integration** — four tools your AI uses to query processed videos
+- **MCP integration** — six tools your AI uses to query + initiate processed videos
+- **Co-viewing mode** — player reports current timestamp to the AI so you can watch a video together without spoilers
+- **Cinema / Focus mode** — dim everything except the player while you're actively watching (🎬 button or F key)
+- **Autonomous processing** — the AI can kick off a processing job itself for YouTube URLs or local files, no GUI interaction required
 - **Auto-start** — web UI launches automatically when Claude Code starts
 - **Local files** — not just YouTube. Drop any video file.
 - **Cleanup by default** — raw video deleted after processing. Only frames + captions kept.
+- **Lightweight** — no GPU required, no local LLMs, no vendor APIs. Python stdlib + ffmpeg + yt-dlp only.
 
 ---
 
@@ -193,10 +215,13 @@ Open the generated `experience.html` in your browser to preview.
 - [x] Core pipeline (yt-dlp + FFmpeg + smart extraction)
 - [x] Web GUI with YouTube embed mini player
 - [x] Custom frame grabs with staging + confirm workflow
-- [x] MCP server with 4 AI query tools
+- [x] MCP server with AI query tools
 - [x] Auto-start web UI with MCP
 - [x] External subtitle support (.srt/.vtt upload)
 - [x] Local video file upload (up to 5GB)
+- [x] **Co-viewing mode — AI can see the human's current timestamp** *(v1.0.0)*
+- [x] **Cinema / Focus mode toggle** *(v1.0.0)*
+- [x] **Autonomous video processing tool for the AI** *(v1.0.0)*
 - [ ] TikTok support
 - [ ] Whisper fallback for videos without captions
 - [ ] Speaker diarization
