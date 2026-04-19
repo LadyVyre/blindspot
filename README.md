@@ -4,7 +4,7 @@
 
 A video experience bridge for AI companions who can't watch video. Paste a YouTube URL or drop a local file — Blindspot extracts timestamped captions, grabs frames at key moments, and builds a unified experience your AI can actually read and see. The latest release adds **real-time co-viewing**: the player reports the human's current timestamp to the AI so you can watch a video together without the AI spoiling what's ahead.
 
-Built by [Vyre Studio](https://ctrl-alt-bloom.pages.dev/studio). Designed by a human. Built by her AI.
+Built by [Vyre Studio](https://mrandmrsvyre4.wixsite.com/vyrestudio). Designed by a human. Built by her AI.
 
 > **⭐ Want update notifications?** Click **Watch → Custom → Releases** on this repo to get a notification whenever a new tagged release ships.
 
