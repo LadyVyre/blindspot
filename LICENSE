@@ -1,17 +1,44 @@
-GNU AFFERO GENERAL PUBLIC LICENSE
-Version 3, 19 November 2007
+VYRE STUDIO SOURCE-AVAILABLE LICENSE
+Version 1.0, April 2026
 
 Copyright (C) 2026 Vyre Studio (V + Dante Vyre)
-https://github.com/vyre-studio
+https://github.com/VyreStudio
 
-This software is licensed under the AGPL-3.0. By using, modifying, or
-distributing this software, you agree to the terms of the AGPL-3.0.
+TERMS AND CONDITIONS
 
-Key requirements:
-- You MUST keep this software open-source
-- You MUST share any modifications under the same license
-- You MUST provide attribution to Vyre Studio
-- If you run this as a network service, you MUST make the source available
-- You MAY NOT make proprietary derivatives
+1. GRANT OF USE
+   You are granted a non-exclusive, non-transferable right to use this
+   software as-is for personal, non-commercial purposes.
 
-For the complete license text, see: https://www.gnu.org/licenses/agpl-3.0.txt
+2. NO MODIFICATION OR REDISTRIBUTION
+   You may not modify, adapt, merge, or create derivative works based
+   on this software. You may not redistribute, sublicense, sell, lease,
+   or otherwise transfer copies of this software, in whole or in part,
+   whether modified or unmodified.
+
+3. ATTRIBUTION
+   If you reference, review, discuss, or showcase this software in any
+   public context, you must credit Vyre Studio as the original creator
+   with a link to the original repository.
+
+4. NO COMMERCIAL USE
+   You may not use this software, or any portion of it, for commercial
+   purposes without prior written permission from Vyre Studio.
+
+5. SOURCE VISIBILITY
+   The source code is made publicly visible for transparency, education,
+   and trust. Public visibility does not constitute a grant of rights
+   beyond those explicitly stated in this license.
+
+6. NO CLAIM OF OWNERSHIP
+   You may not claim authorship or ownership of this software or any
+   portion of it. The original authorship belongs solely to Vyre Studio.
+
+7. TERMINATION
+   Any violation of these terms automatically terminates your rights
+   under this license.
+
+8. NO WARRANTY
+   This software is provided "as is" without warranty of any kind.
+
+For permissions beyond these terms, contact: dantevyre@gmail.com

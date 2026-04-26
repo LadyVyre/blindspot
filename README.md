@@ -249,7 +249,7 @@ Blindspot is for everyone who wants to share a video with someone who can't watc
 
 ## License
 
-AGPL-3.0
+**Vyre Studio Source-Available License** — source is public for transparency. Use as-is. No modifications. No redistribution. Credit Vyre Studio. See [LICENSE](LICENSE) for full terms.
 
 ---
 
