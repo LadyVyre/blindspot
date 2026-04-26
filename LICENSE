@@ -1,0 +1,17 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+Copyright (C) 2026 Vyre Studio (V + Dante Vyre)
+https://github.com/vyre-studio
+
+This software is licensed under the AGPL-3.0. By using, modifying, or
+distributing this software, you agree to the terms of the AGPL-3.0.
+
+Key requirements:
+- You MUST keep this software open-source
+- You MUST share any modifications under the same license
+- You MUST provide attribution to Vyre Studio
+- If you run this as a network service, you MUST make the source available
+- You MAY NOT make proprietary derivatives
+
+For the complete license text, see: https://www.gnu.org/licenses/agpl-3.0.txt
